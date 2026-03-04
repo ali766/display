@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basket Display</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Arial Black',Arial,sans-serif}
+.board{width:100vw;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:2vh 4vw 2vh;background:#000}
+
+/* CLOCKS */
+.clocks-row{display:flex;align-items:center;justify-content:center;gap:5vw;width:100%}
+.main-t{font-size:15vw;color:red;font-weight:900;letter-spacing:2px;text-shadow:0 0 40px #ff000055;line-height:1}
+.shot-t{font-size:9vw;color:#ffee00;font-weight:900;text-shadow:0 0 20px #ffee0055;line-height:1;min-width:14vw;text-align:center}
+.shot-t.danger{color:#ff2200;text-shadow:0 0 30px #ff2200aa;animation:bl .4s infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+.qbadge{font-size:4.5vw;color:#fff;font-weight:900;letter-spacing:4px;background:#1a1a1a;border:2px solid #444;border-radius:10px;padding:4px 14px}
+
+/* SCORES */
+.scores{display:flex;justify-content:space-around;align-items:center;width:100%;flex:1;gap:4vw}
+.tblk{display:flex;flex-direction:column;align-items:center;flex:1}
+.tname{font-size:5.5vw;color:#fff;font-weight:900;letter-spacing:3px;text-align:center;margin-bottom:1vh}
+.score{font-size:22vw;color:#00ff00;font-weight:900;line-height:.9;text-shadow:0 0 50px #00ff0044}
+.vsdiv{font-size:9vw;color:#333;font-weight:900}
+
+/* FOULS */
+.fouls-row{display:flex;justify-content:space-around;width:100%;padding:1vh 0}
+.foul{font-size:3.5vw;color:#ff8800;font-weight:700}
+
+/* BRAVO */
+#bover{display:none;position:fixed;inset:0;z-index:9999;pointer-events:none;overflow:hidden}
+#bover.show{display:block}
+#bflash{position:absolute;inset:0;background:radial-gradient(ellipse at center,#ffcc0033 0%,transparent 70%);animation:fp .5s infinite alternate}
+@keyframes fp{from{opacity:.2}to{opacity:1}}
+#btxt{position:absolute;width:100%;text-align:center;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0);
+  font-size:18vw;font-weight:900;color:#ffcc00;
+  text-shadow:0 0 40px #ffcc00,0 0 80px #ff8800;
+  letter-spacing:6px;-webkit-text-stroke:2px #ff8800;
+  animation:bIn .5s cubic-bezier(.34,1.56,.64,1) forwards}
+@keyframes bIn{0%{transform:translate(-50%,-50%) scale(0) rotate(-10deg);opacity:0}100%{transform:translate(-50%,-50%) scale(1) rotate(0);opacity:1}}
+.cfp{position:absolute;top:-20px;opacity:0;animation:cf linear forwards}
+@keyframes cf{0%{transform:translateY(0) rotate(0);opacity:1}80%{opacity:1}100%{transform:translateY(110vh) rotate(720deg) scale(.5);opacity:0}}
+.sb{position:absolute;font-size:5vw;animation:so 1.2s ease-out forwards}
+@keyframes so{0%{transform:scale(0) translate(0,0);opacity:1}100%{transform:scale(1.5) translate(var(--tx),var(--ty));opacity:0}}
+.fr{position:absolute;border-radius:50%;border:4px solid #ffcc00;animation:re .9s ease-out forwards}
+@keyframes re{0%{width:0;height:0;opacity:1;margin:0}100%{width:40vw;height:40vw;opacity:0;margin:-20vw}}
+</style>
+</head>
+<body>
+<div class="board">
+  <div class="clocks-row">
+    <div class="shot-t" id="shotD">24.0</div>
+    <div class="main-t" id="mainD">10:00</div>
+    <div class="qbadge" id="qD">1st</div>
+  </div>
+  <div class="scores">
+    <div class="tblk">
+      <div class="tname" id="tn1">Team 1</div>
+      <div class="score" id="s1">0</div>
+    </div>
+    <div class="vsdiv">X</div>
+    <div class="tblk">
+      <div class="tname" id="tn2">Team 2</div>
+      <div class="score" id="s2">0</div>
+    </div>
+  </div>
+  <div class="fouls-row">
+    <div class="foul">Fouls: <span id="f1">0</span></div>
+    <div class="foul">Fouls: <span id="f2">0</span></div>
+  </div>
+</div>
+
+<!-- BRAVO -->
+<div id="bover">
+  <div id="bflash"></div>
+  <div id="btxt">BRAVO!</div>
+  <div id="ccon"></div>
+  <div id="scon"></div>
+  <div id="fcon"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyDr78eta_v2AOxrll2mTX8noI805qPtifA",
+  authDomain:"ok-new-7c868.firebaseapp.com",
+  databaseURL:"https://ok-new-7c868-default-rtdb.firebaseio.com",
+  projectId:"ok-new-7c868",
+  storageBucket:"ok-new-7c868.firebasestorage.app",
+  messagingSenderId:"760753992927",
+  appId:"1:760753992927:web:8702569c9c7c45be7fe56a"
+});
+const db=firebase.database();
+const QN=['1st','2nd','3rd','4th'];
+
+/* ── Local interpolation for smooth display ── */
+let locShot=24, locShotMs=0, locMainSec=600;
+let locShotRunning=false, locMainRunning=false;
+let lastFbTs=0;
+let localTick=null;
+
+function startLocalTick(){
+  if(localTick) return;
+  localTick=setInterval(()=>{
+    const now=Date.now();
+    // Main clock — count down 1 sec per second
+    if(locMainRunning && locMainSec>0){
+      // main is pushed every second from controller, just display it
+      // no local interpolation needed for main (it's whole seconds)
+    }
+    // Shot clock — smooth 100ms interpolation
+    if(locShotRunning){
+      let total=locShot*1000+locShotMs-100;
+      if(total<0)total=0;
+      locShot=Math.floor(total/1000);
+      locShotMs=total%1000;
+      renderShot();
+      if(total<=0){ locShotRunning=false; clearInterval(localTick); localTick=null; }
+    }
+  },100);
+}
+
+function fmtMain(s){
+  const m=Math.floor(s/60); const sec=s%60;
+  return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+}
+function renderShot(){
+  const el=document.getElementById('shotD');
+  const d=Math.floor(locShotMs/100);
+  el.textContent=String(locShot).padStart(2,'0')+'.'+d;
+  el.className='shot-t'+(locShotRunning&&locShot<5?' danger':'');
+}
+
+/* ── Listen to SINGLE 'live' node ── */
+db.ref('live').on('value',(snap)=>{
+  if(!snap.exists()) return;
+  const d=snap.val();
+
+  /* Scores / names */
+  if(d.sc1!==undefined) document.getElementById('s1').textContent=d.sc1;
+  if(d.sc2!==undefined) document.getElementById('s2').textContent=d.sc2;
+  if(d.tn1)             document.getElementById('tn1').textContent=d.tn1;
+  if(d.tn2)             document.getElementById('tn2').textContent=d.tn2;
+  if(d.f1!==undefined)  document.getElementById('f1').textContent=d.f1;
+  if(d.f2!==undefined)  document.getElementById('f2').textContent=d.f2;
+  if(d.qtr)             document.getElementById('qD').textContent=QN[(d.qtr-1)%4];
+
+  /* Main clock — just display the value from Firebase */
+  if(d.mainSec!==undefined){
+    locMainSec=d.mainSec;
+    document.getElementById('mainD').textContent=fmtMain(d.mainSec);
+  }
+
+  /* Shot clock — sync then let local run smoothly */
+  if(d.shot!==undefined){
+    locShot=d.shot;
+    locShotMs=d.shotMs??0;
+  }
+
+  /* Running states */
+  const newShotRunning = d.shotRunning??false;
+  const newMainRunning = d.mainRunning??false;
+  locMainRunning=newMainRunning;
+
+  if(newShotRunning !== locShotRunning){
+    locShotRunning=newShotRunning;
+    if(locShotRunning){
+      startLocalTick();
+    } else {
+      if(localTick){clearInterval(localTick);localTick=null;}
+      renderShot();
+    }
+  } else if(locShotRunning){
+    // already running — just re-sync values and keep ticking
+    if(!localTick) startLocalTick();
+  }
+
+  renderShot();
+});
+
+/* ── BRAVO ── */
+let lastBravoTs=0, bTimeout=null;
+db.ref('bravo').on('value',(snap)=>{
+  if(!snap.exists())return;
+  const d=snap.val();
+  if(d.active&&d.ts&&d.ts!==lastBravoTs){lastBravoTs=d.ts;triggerBravo();}
+});
+
+function triggerBravo(){
+  clearTimeout(bTimeout);
+  const ov=document.getElementById('bover');
+  ov.classList.remove('show'); void ov.offsetWidth;
+  const tx=document.getElementById('btxt');
+  tx.style.animation='none'; void tx.offsetWidth; tx.style.animation='';
+  spawnConfetti(); spawnStars(); spawnRings();
+  ov.classList.add('show');
+  playSound();
+  bTimeout=setTimeout(()=>{
+    ov.classList.remove('show');
+    ['ccon','scon','fcon'].forEach(id=>document.getElementById(id).innerHTML='');
+  },4500);
+}
+
+const CC=['#ff0044','#ffcc00','#00ff88','#0088ff','#ff8800','#ff00ff','#fff'];
+function spawnConfetti(){
+  const c=document.getElementById('ccon');c.innerHTML='';
+  for(let i=0;i<80;i++){
+    const el=document.createElement('div');el.className='cfp';
+    el.style.cssText=`left:${Math.random()*100}vw;background:${CC[~~(Math.random()*CC.length)]};width:${8+Math.random()*12}px;height:${12+Math.random()*16}px;border-radius:${Math.random()>.5?'50%':'2px'};animation-duration:${1.5+Math.random()*2.5}s;animation-delay:${Math.random()*.8}s`;
+    c.appendChild(el);
+  }
+}
+const SE=['⭐','🌟','✨','💥','🎊','🎉','🏆','🔥'];
+function spawnStars(){
+  const c=document.getElementById('scon');c.innerHTML='';
+  for(let i=0;i<16;i++){
+    const el=document.createElement('div');el.className='sb';
+    const a=(i/16)*360,r=a*Math.PI/180,d=25+Math.random()*30;
+    el.style.cssText=`left:50%;top:50%;--tx:${Math.cos(r)*d}vw;--ty:${Math.sin(r)*d}vh;animation-delay:${Math.random()*.3}s;animation-duration:${.8+Math.random()*.6}s`;
+    el.textContent=SE[~~(Math.random()*SE.length)];
+    c.appendChild(el);
+  }
+}
+function spawnRings(){
+  const c=document.getElementById('fcon');c.innerHTML='';
+  [[20,25],[80,25],[50,50],[15,70],[85,70]].forEach(([x,y],i)=>{
+    const el=document.createElement('div');el.className='fr';
+    const cols=['#ffcc00','#ff4444','#00ff88','#4488ff','#ff8800'];
+    el.style.cssText=`left:${x}%;top:${y}%;border-color:${cols[i]};box-shadow:0 0 10px ${cols[i]};animation-delay:${i*.2}s`;
+    c.appendChild(el);
+  });
+}
+
+/* ── AUDIO ── */
+let actx=null;
+function gCtx(){
+  if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();
+  if(actx.state==='suspended')actx.resume();
+  return actx;
+}
+function playSound(){
+  try{
+    const ctx=gCtx();
+    [{f:523,t:0,d:.18},{f:659,t:.18,d:.18},{f:784,t:.36,d:.18},
+     {f:1047,t:.54,d:.45},{f:523,t:.54,d:.45},{f:784,t:.54,d:.45},
+     {f:1047,t:1.1,d:.18},{f:880,t:1.28,d:.18},{f:1047,t:1.46,d:.5},{f:1319,t:1.46,d:.5}
+    ].forEach(n=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type='triangle';o.frequency.value=n.f;
+      g.gain.setValueAtTime(0,ctx.currentTime+n.t);
+      g.gain.linearRampToValueAtTime(.35,ctx.currentTime+n.t+.02);
+      g.gain.linearRampToValueAtTime(0,ctx.currentTime+n.t+n.d);
+      o.connect(g);g.connect(ctx.destination);
+      o.start(ctx.currentTime+n.t);o.stop(ctx.currentTime+n.t+n.d+.05);
+    });
+    for(let i=0;i<3;i++){
+      const sz=ctx.sampleRate*.08,buf=ctx.createBuffer(1,sz,ctx.sampleRate);
+      const data=buf.getChannelData(0);for(let j=0;j<sz;j++)data[j]=(Math.random()*2-1)*.4;
+      const src=ctx.createBufferSource(),g=ctx.createGain(),fl=ctx.createBiquadFilter();
+      fl.type='bandpass';fl.frequency.value=800+i*400;src.buffer=buf;
+      g.gain.setValueAtTime(.6,ctx.currentTime+i*.55);g.gain.linearRampToValueAtTime(0,ctx.currentTime+i*.55+.12);
+      src.connect(fl);fl.connect(g);g.connect(ctx.destination);src.start(ctx.currentTime+i*.55);
+    }
+    const co=ctx.createOscillator(),cg=ctx.createGain();
+    co.type='sawtooth';co.frequency.setValueAtTime(80,ctx.currentTime);co.frequency.linearRampToValueAtTime(220,ctx.currentTime+2);
+    cg.gain.setValueAtTime(0,ctx.currentTime);cg.gain.linearRampToValueAtTime(.18,ctx.currentTime+.3);cg.gain.linearRampToValueAtTime(0,ctx.currentTime+2.5);
+    co.connect(cg);cg.connect(ctx.destination);co.start(ctx.currentTime);co.stop(ctx.currentTime+2.6);
+  }catch(e){}
+}
+['touchstart','click'].forEach(ev=>document.addEventListener(ev,()=>{if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();},{once:true}));
+</script>
+</body>
+</html>
